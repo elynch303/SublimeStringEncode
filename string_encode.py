@@ -1,45 +1,1049 @@
 # coding: utf8
-import urllib
-import base64
-import re
-import json
-import sys
 
 import sublime_plugin
+import urllib
+import re
 
 
 class StringEncode(sublime_plugin.TextCommand):
     def run(self, edit):
-        for region in self.view.sel():
+        e = self.view.begin_edit('encode')
+        regions = [region for region in self.view.sel()]
+
+        # sort by region.end() DESC
+        def compare(region_a, region_b):
+            return cmp(region_b.end(), region_a.end())
+        regions.sort(compare)
+
+        for region in regions:
             if region.empty():
                 continue
             text = self.view.substr(region)
             replacement = self.encode(text)
             self.view.replace(edit, region, replacement)
+        self.view.end_edit(e)
 
-
+# TODO add HEX
 html_escape_table = {
-    u"\"": "&quot;", u"'": "&#039;", u"<": "&lt;", u">": "&gt;", u"¡": "&iexcl;", u"¢": "&cent;", u"£": "&pound;", u"¤": "&curren;", u"¥": "&yen;", u"¦": "&brvbar;", u"§": "&sect;", u"¨": "&uml;", u"©": "&copy;", u"ª": "&ordf;", u"«": "&laquo;", u"¬": "&not;", u"®": "&reg;", u"¯": "&macr;", u"°": "&deg;", u"±": "&plusmn;", u"²": "&sup2;", u"³": "&sup3;", u"´": "&acute;", u"µ": "&micro;", u"¶": "&para;", u"·": "&middot;", u"¸": "&cedil;", u"¹": "&sup1;", u"º": "&ordm;", u"»": "&raquo;", u"¼": "&frac14;", u"½": "&frac12;", u"¾": "&frac34;", u"¿": "&iquest;", u"À": "&Agrave;", u"Á": "&Aacute;", u"Â": "&Acirc;", u"Ã": "&Atilde;", u"Ä": "&Auml;", u"Å": "&Aring;", u"Æ": "&AElig;", u"Ç": "&Ccedil;", u"È": "&Egrave;", u"É": "&Eacute;", u"Ê": "&Ecirc;", u"Ë": "&Euml;", u"Ì": "&Igrave;", u"Í": "&Iacute;", u"Î": "&Icirc;", u"Ï": "&Iuml;", u"Ð": "&ETH;", u"Ñ": "&Ntilde;", u"Ò": "&Ograve;", u"Ó": "&Oacute;", u"Ô": "&Ocirc;", u"Õ": "&Otilde;", u"Ö": "&Ouml;", u"×": "&times;", u"Ø": "&Oslash;", u"Ù": "&Ugrave;", u"Ú": "&Uacute;", u"Û": "&Ucirc;", u"Ü": "&Uuml;", u"Ý": "&Yacute;", u"Þ": "&THORN;", u"ß": "&szlig;", u"à": "&agrave;", u"á": "&aacute;", u"â": "&acirc;", u"ã": "&atilde;", u"ä": "&auml;", u"å": "&aring;", u"æ": "&aelig;", u"ç": "&ccedil;", u"è": "&egrave;", u"é": "&eacute;", u"ê": "&ecirc;", u"ë": "&euml;", u"ì": "&igrave;", u"í": "&iacute;", u"î": "&icirc;", u"ï": "&iuml;", u"ð": "&eth;", u"ñ": "&ntilde;", u"ò": "&ograve;", u"ó": "&oacute;", u"ô": "&ocirc;", u"õ": "&otilde;", u"ö": "&ouml;", u"÷": "&divide;", u"ø": "&oslash;", u"ù": "&ugrave;", u"ú": "&uacute;", u"û": "&ucirc;", u"ü": "&uuml;", u"ý": "&yacute;", u"þ": "&thorn;", u"ÿ": "&yuml;", u"Œ": "&OElig;", u"œ": "&oelig;", u"Š": "&Scaron;", u"š": "&scaron;", u"Ÿ": "&Yuml;", u"ƒ": "&fnof;", u"ˆ": "&circ;", u"˜": "&tilde;", u"Α": "&Alpha;", u"Β": "&Beta;", u"Γ": "&Gamma;", u"Δ": "&Delta;", u"Ε": "&Epsilon;", u"Ζ": "&Zeta;", u"Η": "&Eta;", u"Θ": "&Theta;", u"Ι": "&Iota;", u"Κ": "&Kappa;", u"Λ": "&Lambda;", u"Μ": "&Mu;", u"Ν": "&Nu;", u"Ξ": "&Xi;", u"Ο": "&Omicron;", u"Π": "&Pi;", u"Ρ": "&Rho;", u"Σ": "&Sigma;", u"Τ": "&Tau;", u"Υ": "&Upsilon;", u"Φ": "&Phi;", u"Χ": "&Chi;", u"Ψ": "&Psi;", u"Ω": "&Omega;", u"α": "&alpha;", u"β": "&beta;", u"γ": "&gamma;", u"δ": "&delta;", u"ε": "&epsilon;", u"ζ": "&zeta;", u"η": "&eta;", u"θ": "&theta;", u"ι": "&iota;", u"κ": "&kappa;", u"λ": "&lambda;", u"μ": "&mu;", u"ν": "&nu;", u"ξ": "&xi;", u"ο": "&omicron;", u"π": "&pi;", u"ρ": "&rho;", u"ς": "&sigmaf;", u"σ": "&sigma;", u"τ": "&tau;", u"υ": "&upsilon;", u"φ": "&phi;", u"χ": "&chi;", u"ψ": "&psi;", u"ω": "&omega;", u"ϑ": "&thetasym;", u"ϒ": "&upsih;", u"ϖ": "&piv;", u"–": "&ndash;", u"—": "&mdash;", u"‘": "&lsquo;", u"’": "&rsquo;", u"‚": "&sbquo;", u"“": "&ldquo;", u"”": "&rdquo;", u"„": "&bdquo;", u"†": "&dagger;", u"‡": "&Dagger;", u"•": "&bull;", u"…": "&hellip;", u"‰": "&permil;", u"′": "&prime;", u"″": "&Prime;", u"‹": "&lsaquo;", u"›": "&rsaquo;", u"‾": "&oline;", u"⁄": "&frasl;", u"€": "&euro;", u"ℑ": "&image;", u"℘": "&weierp;", u"ℜ": "&real;", u"™": "&trade;", u"ℵ": "&alefsym;", u"←": "&larr;", u"↑": "&uarr;", u"→": "&rarr;", u"↓": "&darr;", u"↔": "&harr;", u"↵": "&crarr;", u"⇐": "&lArr;", u"⇑": "&uArr;", u"⇒": "&rArr;", u"⇓": "&dArr;", u"⇔": "&hArr;", u"∀": "&forall;", u"∂": "&part;", u"∃": "&exist;", u"∅": "&empty;", u"∇": "&nabla;", u"∈": "&isin;", u"∉": "&notin;", u"∋": "&ni;", u"∏": "&prod;", u"∑": "&sum;", u"−": "&minus;", u"∗": "&lowast;", u"√": "&radic;", u"∝": "&prop;", u"∞": "&infin;", u"∠": "&ang;", u"∧": "&and;", u"∨": "&or;", u"∩": "&cap;", u"∪": "&cup;", u"∫": "&int;", u"∴": "&there4;", u"∼": "&sim;", u"≅": "&cong;", u"≈": "&asymp;", u"≠": "&ne;", u"≡": "&equiv;", u"≤": "&le;", u"≥": "&ge;", u"⊂": "&sub;", u"⊃": "&sup;", u"⊄": "&nsub;", u"⊆": "&sube;", u"⊇": "&supe;", u"⊕": "&oplus;", u"⊗": "&otimes;", u"⊥": "&perp;", u"⋅": "&sdot;", u"⌈": "&lceil;", u"⌉": "&rceil;", u"⌊": "&lfloor;", u"⌋": "&rfloor;", u"〈": "&lang;", u"〉": "&rang;", u"◊": "&loz;", u"♠": "&spades;", u"♣": "&clubs;", u"♥": "&hearts;", u"♦": "&diams;", u"\xa0": "&nbsp;",
-}
+    u"\"": "&quot;", 
+    u"'": "&#039;", 
+    u"<": "&lt;", 
+    u">": "&gt;", 
+    u"¡": "&iexcl;", 
+    u"¢": "&cent;", 
+    u"£": "&pound;", 
+    u"¤": "&curren;", 
+    u"¥": "&yen;", 
+    u"¦": "&brvbar;", 
+    u"§": "&sect;", 
+    u"¨": "&uml;", 
+    u"©": "&copy;", 
+    u"ª": "&ordf;", 
+    u"«": "&laquo;", 
+    u"¬": "&not;", 
+    # u"U": "&shy;", 
+    u"®": "&reg;", 
+    u"¯": "&macr;", 
+    u"°": "&deg;", 
+    u"±": "&plusmn;", 
+    u"²": "&sup2;", 
+    u"³": "&sup3;", 
+    u"´": "&acute;", 
+    u"µ": "&micro;", 
+    u"¶": "&para;", 
+    u"·": "&middot;", 
+    u"¸": "&cedil;", 
+    u"¹": "&sup1;", 
+    u"º": "&ordm;", 
+    u"»": "&raquo;", 
+    u"¼": "&frac14;", 
+    u"½": "&frac12;", 
+    u"¾": "&frac34;", 
+    u"¿": "&iquest;", 
+    u"À": "&Agrave;", 
+    u"Á": "&Aacute;", 
+    u"Â": "&Acirc;", 
+    u"Ã": "&Atilde;", 
+    u"Ä": "&Auml;", 
+    u"Å": "&Aring;", 
+    u"Æ": "&AElig;", 
+    u"Ç": "&Ccedil;", 
+    u"È": "&Egrave;", 
+    u"É": "&Eacute;", 
+    u"Ê": "&Ecirc;", 
+    u"Ë": "&Euml;", 
+    u"Ì": "&Igrave;", 
+    u"Í": "&Iacute;", 
+    u"Î": "&Icirc;", 
+    u"Ï": "&Iuml;", 
+    u"Ð": "&ETH;", 
+    u"Ñ": "&Ntilde;", 
+    u"Ò": "&Ograve;", 
+    u"Ó": "&Oacute;", 
+    u"Ô": "&Ocirc;", 
+    u"Õ": "&Otilde;", 
+    u"Ö": "&Ouml;", 
+    u"×": "&times;", 
+    u"Ø": "&Oslash;", 
+    u"Ù": "&Ugrave;", 
+    u"Ú": "&Uacute;", 
+    u"Û": "&Ucirc;", 
+    u"Ü": "&Uuml;", 
+    u"Ý": "&Yacute;", 
+    u"Þ": "&THORN;", 
+    u"ß": "&szlig;", 
+    u"à": "&agrave;", 
+    u"á": "&aacute;", 
+    u"â": "&acirc;", 
+    u"ã": "&atilde;", 
+    u"ä": "&auml;", 
+    u"å": "&aring;", 
+    u"æ": "&aelig;", 
+    u"ç": "&ccedil;", 
+    u"è": "&egrave;", 
+    u"é": "&eacute;", 
+    u"ê": "&ecirc;", 
+    u"ë": "&euml;", 
+    u"ì": "&igrave;", 
+    u"í": "&iacute;", 
+    u"î": "&icirc;", 
+    u"ï": "&iuml;", 
+    u"ð": "&eth;", 
+    u"ñ": "&ntilde;", 
+    u"ò": "&ograve;", 
+    u"ó": "&oacute;", 
+    u"ô": "&ocirc;", 
+    u"õ": "&otilde;", 
+    u"ö": "&ouml;", 
+    u"÷": "&divide;", 
+    u"ø": "&oslash;", 
+    u"ù": "&ugrave;", 
+    u"ú": "&uacute;", 
+    u"û": "&ucirc;", 
+    u"ü": "&uuml;", 
+    u"ý": "&yacute;", 
+    u"þ": "&thorn;", 
+    u"ÿ": "&yuml;", 
+    u"Œ": "&OElig;", 
+    u"œ": "&oelig;", 
+    u"Š": "&Scaron;", 
+    u"š": "&scaron;", 
+    u"Ÿ": "&Yuml;", 
+    u"ƒ": "&fnof;", 
+    u"ˆ": "&circ;", 
+    u"˜": "&tilde;", 
+    u"Α": "&Alpha;", 
+    u"Β": "&Beta;", 
+    u"Γ": "&Gamma;", 
+    u"Δ": "&Delta;", 
+    u"Ε": "&Epsilon;", 
+    u"Ζ": "&Zeta;", 
+    u"Η": "&Eta;", 
+    u"Θ": "&Theta;", 
+    u"Ι": "&Iota;", 
+    u"Κ": "&Kappa;", 
+    u"Λ": "&Lambda;", 
+    u"Μ": "&Mu;", 
+    u"Ν": "&Nu;", 
+    u"Ξ": "&Xi;", 
+    u"Ο": "&Omicron;", 
+    u"Π": "&Pi;", 
+    u"Ρ": "&Rho;", 
+    u"Σ": "&Sigma;", 
+    u"Τ": "&Tau;", 
+    u"Υ": "&Upsilon;", 
+    u"Φ": "&Phi;", 
+    u"Χ": "&Chi;", 
+    u"Ψ": "&Psi;", 
+    u"Ω": "&Omega;", 
+    u"α": "&alpha;", 
+    u"β": "&beta;", 
+    u"γ": "&gamma;", 
+    u"δ": "&delta;", 
+    u"ε": "&epsilon;",
+    u"ζ": "&zeta;", 
+    u"η": "&eta;", 
+    u"θ": "&theta;",
+    u"ι": "&iota;", 
+    u"κ": "&kappa;", 
+    u"λ": "&lambda;", 
+    u"μ": "&mu;",   
+    u"ν": "&nu;", 
+    u"ξ": "&xi;", 
+    u"ο": "&omicron;", 
+    u"π": "&pi;", 
+    u"ρ": "&rho;", 
+    u"ς": "&sigmaf;", 
+    u"σ": "&sigma;", 
+    u"τ": "&tau;", 
+    u"υ": "&upsilon;", 
+    u"φ": "&phi;", 
+    u"χ": "&chi;", 
+    u"ψ": "&psi;", 
+    u"ω": "&omega;", 
+    u"ϑ": "&thetasym;", 
+    u"ϒ": "&upsih;", 
+    u"ϖ": "&piv;", 
+    u"–": "&ndash;", 
+    u"—": "&mdash;", 
+    u"‘": "&lsquo;", 
+    u"’": "&rsquo;", 
+    u"‚": "&sbquo;", 
+    u"“": "&ldquo;", 
+    u"”": "&rdquo;", 
+    u"„": "&bdquo;", 
+    u"†": "&dagger;", 
+    u"‡": "&Dagger;", 
+    u"•": "&bull;", 
+    u"…": "&hellip;", 
+    u"‰": "&permil;", 
+    u"′": "&prime;", 
+    u"″": "&Prime;", 
+    u"‹": "&lsaquo;", 
+    u"›": "&rsaquo;", 
+    u"‾": "&oline;", 
+    u"⁄": "&frasl;", 
+    u"€": "&euro;", 
+    u"ℑ": "&image;", 
+    u"℘": "&weierp;", 
+    u"ℜ": "&real;", 
+    u"™": "&trade;", 
+    u"ℵ": "&alefsym;", 
+    u"←": "&larr;", 
+    u"↑": "&uarr;", 
+    u"→": "&rarr;", 
+    u"↓": "&darr;", 
+    u"↔": "&harr;", 
+    u"↵": "&crarr;", 
+    u"⇐": "&lArr;", 
+    u"⇑": "&uArr;", 
+    u"⇒": "&rArr;", 
+    u"⇓": "&dArr;", 
+    u"⇔": "&hArr;", 
+    u"∀": "&forall;", 
+    u"∂": "&part;", 
+    u"∃": "&exist;", 
+    u"∅": "&empty;", 
+    u"∇": "&nabla;", 
+    u"∈": "&isin;", 
+    u"∉": "&notin;", 
+    u"∋": "&ni;", 
+    u"∏": "&prod;", 
+    u"∑": "&sum;", 
+    u"−": "&minus;", 
+    u"∗": "&lowast;", 
+    u"√": "&radic;", 
+    u"∝": "&prop;", 
+    u"∞": "&infin;", 
+    u"∠": "&ang;", 
+    u"∧": "&and;", 
+    u"∨": "&or;", 
+    u"∩": "&cap;", 
+    u"∪": "&cup;", 
+    u"∫": "&int;", 
+    u"∴": "&there4;", 
+    u"∼": "&sim;", 
+    u"≅": "&cong;", 
+    u"≈": "&asymp;", 
+    u"≠": "&ne;", 
+    u"≡": "&equiv;", 
+    u"≤": "&le;", 
+    u"≥": "&ge;", 
+    u"⊂": "&sub;", 
+    u"⊃": "&sup;", 
+    u"⊄": "&nsub;", 
+    u"⊆": "&sube;", 
+    u"⊇": "&supe;", 
+    u"⊕": "&oplus;", 
+    u"⊗": "&otimes;", 
+    u"⊥": "&perp;", 
+    u"⋅": "&sdot;", 
+    u"⌈": "&lceil;", 
+    u"⌉": "&rceil;", 
+    u"⌊": "&lfloor;", 
+    u"⌋": "&rfloor;", 
+    u"〈": "&lang;", 
+    u"〉": "&rang;", 
+    u"◊": "&loz;", 
+    u"♠": "&spades;", 
+    u"♣": "&clubs;", 
+    u"♥": "&hearts;",  
+    u"♦": "&diams;",
+    }
+html_escape_numberd_table = {
+    u"\"": "&#34;", 
+    u"'": "&#039;", 
+    u"<": "&#60;", 
+    u">": "&#62;", 
+    u"¡": "&#161;", 
+    u"¢": "&#162;", 
+    u"£": "&#163;", 
+    u"¤": "&#164;", 
+    u"¥": "&#165;", 
+    u"¦": "&#166;", 
+    u"§": "&#167;", 
+    u"¨": "&#168;", 
+    u"©": "&#169;", 
+    u"ª": "&#170;", 
+    u"«": "&#171;", 
+    u"¬": "&#172;", 
+    # u"U": "&#173;", 
+    u"®": "&#174;", 
+    u"¯": "&#175;", 
+    u"°": "&#176;", 
+    u"±": "&#177;", 
+    u"²": "&#178;", 
+    u"³": "&#179;", 
+    u"´": "&#180;", 
+    u"µ": "&#181;", 
+    u"¶": "&#182;", 
+    u"·": "&#183;", 
+    u"¸": "&#184;", 
+    u"¹": "&#185;", 
+    u"º": "&#186;", 
+    u"»": "&#187;", 
+    u"¼": "&#188;", 
+    u"½": "&#189;", 
+    u"¾": "&#190;", 
+    u"¿": "&#191;", 
+    u"À": "&#192;", 
+    u"Á": "&#193;", 
+    u"Â": "&#194;", 
+    u"Ã": "&#195;", 
+    u"Ä": "&#196;", 
+    u"Å": "&#197;", 
+    u"Æ": "&#198;", 
+    u"Ç": "&#199;", 
+    u"È": "&#200;", 
+    u"É": "&#201;", 
+    u"Ê": "&#202;", 
+    u"Ë": "&#203;", 
+    u"Ì": "&#204;", 
+    u"Í": "&#205;", 
+    u"Î": "&#206;", 
+    u"Ï": "&#207;", 
+    u"Ð": "&#208;", 
+    u"Ñ": "&#209;", 
+    u"Ò": "&#210;", 
+    u"Ó": "&#211;", 
+    u"Ô": "&#212;", 
+    u"Õ": "&#213;", 
+    u"Ö": "&#214;", 
+    u"×": "&#215;", 
+    u"Ø": "&#216;", 
+    u"Ù": "&#217;", 
+    u"Ú": "&#218;", 
+    u"Û": "&#219;", 
+    u"Ü": "&#220;", 
+    u"Ý": "&#221;", 
+    u"Þ": "&#222;", 
+    u"ß": "&#223;", 
+    u"à": "&#224;", 
+    u"á": "&#225;", 
+    u"â": "&#226;", 
+    u"ã": "&#227;", 
+    u"ä": "&#228;", 
+    u"å": "&#229;", 
+    u"æ": "&#230;", 
+    u"ç": "&#231;", 
+    u"è": "&#232;", 
+    u"é": "&#233;", 
+    u"ê": "&#234;", 
+    u"ë": "&#235;", 
+    u"ì": "&#236;", 
+    u"í": "&#237;", 
+    u"î": "&#238;", 
+    u"ï": "&#239;", 
+    u"ð": "&#240;", 
+    u"ñ": "&#241;", 
+    u"ò": "&#242;", 
+    u"ó": "&#243;", 
+    u"ô": "&#244;", 
+    u"õ": "&#245;", 
+    u"ö": "&#246;", 
+    u"÷": "&#247;", 
+    u"ø": "&#248;", 
+    u"ù": "&#249;", 
+    u"ú": "&#250;", 
+    u"û": "&#251;", 
+    u"ü": "&#252;", 
+    u"ý": "&#253;", 
+    u"þ": "&#254;", 
+    u"ÿ": "&#255;", 
+    u"Œ": "&#338;", 
+    u"œ": "&#339;", 
+    u"Š": "&#352;", 
+    u"š": "&#353;", 
+    u"Ÿ": "&#376;", 
+    u"ƒ": "&#402;", 
+    u"ˆ": "&#94;", 
+    u"˜": "&#126;", 
+    u"Α": "&#913;", 
+    u"Β": "&#914;", 
+    u"Γ": "&#915;", 
+    u"Δ": "&#916;", 
+    u"Ε": "&#917;", 
+    u"Ζ": "&#918;", 
+    u"Η": "&#919;", 
+    u"Θ": "&#920;", 
+    u"Ι": "&#921;", 
+    u"Κ": "&#922;", 
+    u"Λ": "&#923;", 
+    u"Μ": "&#924;", 
+    u"Ν": "&#925;", 
+    u"Ξ": "&#926;", 
+    u"Ο": "&#927;", 
+    u"Π": "&#928;", 
+    u"Ρ": "&#929;", 
+    u"Σ": "&#931;", 
+    u"Τ": "&#932;", 
+    u"Υ": "&#933;", 
+    u"Φ": "&#934;", 
+    u"Χ": "&#935;", 
+    u"Ψ": "&#936;", 
+    u"Ω": "&#937;", 
+    u"α": "&#945;", 
+    u"β": "&#946;", 
+    u"γ": "&#947;", 
+    u"δ": "&#948;", 
+    u"ε": "&#949;",
+    u"ζ": "&#950;", 
+    u"η": "&#951;", 
+    u"θ": "&#952;",
+    u"ι": "&#953;", 
+    u"κ": "&#954;", 
+    u"λ": "&#955;", 
+    u"μ": "&#956;",   
+    u"ν": "&#957;", 
+    u"ξ": "&#958;", 
+    u"ο": "&#959;", 
+    u"π": "&#960;", 
+    u"ρ": "&#961;", 
+    u"ς": "&#962;", 
+    u"σ": "&#963;", 
+    u"τ": "&#964;", 
+    u"υ": "&#965;", 
+    u"φ": "&#966;", 
+    u"χ": "&#967;", 
+    u"ψ": "&#968;", 
+    u"ω": "&#969;", 
+    u"ϑ": "&#977;", 
+    u"ϒ": "&#978;", 
+    u"ϖ": "&#982;", 
+    u"–": "&#8211;", 
+    u"—": "&#8212;", 
+    u"‘": "&#8216;", 
+    u"’": "&#8217;", 
+    u"‚": "&#8218;", 
+    u"“": "&#8220;", 
+    u"”": "&#8221;", 
+    u"„": "&#8222;", 
+    u"†": "&#8224;", 
+    u"‡": "&#8225;", 
+    u"•": "&#8226;", 
+    u"…": "&#8230;", 
+    u"‰": "&#8240;", 
+    u"′": "&#8242;", 
+    u"″": "&#8243;", 
+    u"‹": "&#8249;", 
+    u"›": "&#8250;", 
+    u"‾": "&#8254;", 
+    u"⁄": "&#8260;", 
+    u"€": "&#8364;", 
+    u"ℑ": "&#8476;", 
+    u"℘": "&#8472;", 
+    u"ℜ": "&#8476;", 
+    u"™": "&#8482;", 
+    u"ℵ": "&#8501;", 
+    u"←": "&#8592;", 
+    u"↑": "&#8593;", 
+    u"→": "&#8594;", 
+    u"↓": "&#8595;", 
+    u"↔": "&#8596;", 
+    u"↵": "&#8629;", 
+    u"⇐": "&#8656;", 
+    u"⇑": "&#8657;", 
+    u"⇒": "&#8658;", 
+    u"⇓": "&#8659;", 
+    u"⇔": "&#8660;", 
+    u"∀": "&#8704;", 
+    u"∂": "&#8706;", 
+    u"∃": "&#8707;", 
+    u"∅": "&#8709;", 
+    u"∇": "&#8711;", 
+    u"∈": "&#8712;", 
+    u"∉": "&#8713;", 
+    u"∋": "&#8715;", 
+    u"∏": "&#8719;", 
+    u"∑": "&#8721;", 
+    u"−": "&#8727;", 
+    u"∗": "&#8727;", 
+    u"√": "&#8730;", 
+    u"∝": "&#8733;", 
+    u"∞": "&#8734;", 
+    u"∠": "&#8736;", 
+    u"∧": "&#8743;", 
+    u"∨": "&#8744;", 
+    u"∩": "&#8745;", 
+    u"∪": "&#8746;", 
+    u"∫": "&#8747;", 
+    u"∴": "&#8756;", 
+    u"∼": "&#8764;", 
+    u"≅": "&#8773;", 
+    u"≈": "&#8776;", 
+    u"≠": "&#8800;", 
+    u"≡": "&#8801;", 
+    u"≤": "&#8804;", 
+    u"≥": "&#8805;", 
+    u"⊂": "&#8834;", 
+    u"⊃": "&#8835;", 
+    u"⊄": "&#8836;", 
+    u"⊆": "&#8838;", 
+    u"⊇": "&#8839;", 
+    u"⊕": "&#8853;", 
+    u"⊗": "&#8855;", 
+    u"⊥": "&#8869;", 
+    u"⋅": "&#8901;", 
+    u"⌈": "&#8968;", 
+    u"⌉": "&#8969;", 
+    u"⌊": "&#8970;", 
+    u"⌋": "&#8971;", 
+    u"〈": "&#9001;", 
+    u"〉": "&#9674;", 
+    u"◊": "&#9674;", 
+    u"♠": "&#9824;", 
+    u"♣": "&#9827;", 
+    u"♥": "&#9829;",  
+    u"♦": "&#9830;",
+    }
+html_escape_lettered_to_numberd_table = {
+    u"&quot;":"&#34;", 
+    u"&#039;":"&#039;", 
+    u"&lt;":"&#60;", 
+    u"&gt;":"&#62;", 
+    u"&iexcl;":"&#161;", 
+    u"&cent;":"&#162;", 
+    u"&pound;":"&#163;", 
+    u"&curren;":"&#164;", 
+    u"&yen;":"&#165;", 
+    u"&brvbar;":"&#166;", 
+    u"&sect;":"&#167;", 
+    u"&uml;":"&#168;", 
+    u"&copy;":"&#169;", 
+    u"&ordf;":"&#170;", 
+    u"&laquo;":"&#171;", 
+    u"&not;":"&#172;", 
+    u"&shy;":"&#173;", 
+    u"&reg;":"&#174;", 
+    u"&macr;":"&#175;", 
+    u"&deg;":"&#176;", 
+    u"&plusmn;":"&#177;", 
+    u"&sup2;":"&#178;", 
+    u"&sup3;":"&#179;", 
+    u"&acute;":"&#180;", 
+    u"&micro;":"&#181;", 
+    u"&para;":"&#182;", 
+    u"&middot;":"&#183;", 
+    u"&cedil;":"&#184;", 
+    u"&sup1;":"&#185;", 
+    u"&ordm;":"&#186;", 
+    u"&raquo;":"&#187;", 
+    u"&frac14;":"&#188;", 
+    u"&frac12;":"&#189;", 
+    u"&frac34;":"&#190;", 
+    u"&iquest;":"&#191;", 
+    u"&Agrave;":"&#192;", 
+    u"&Aacute;":"&#193;", 
+    u"&Acirc;":"&#194;", 
+    u"&Atilde;":"&#195;", 
+    u"&Auml;":"&#196;", 
+    u"&Aring;":"&#197;", 
+    u"&AElig;":"&#198;", 
+    u"&Ccedil;":"&#199;", 
+    u"&Egrave;":"&#200;", 
+    u"&Eacute;":"&#201;", 
+    u"&Ecirc;":"&#202;", 
+    u"&Euml;":"&#203;", 
+    u"&Igrave;":"&#204;", 
+    u"&Iacute;":"&#205;", 
+    u"&Icirc;":"&#206;", 
+    u"&Iuml;":"&#207;", 
+    u"&ETH;":"&#208;", 
+    u"&Ntilde;":"&#209;", 
+    u"&Ograve;":"&#210;", 
+    u"&Oacute;":"&#211;", 
+    u"&Ocirc;":"&#212;", 
+    u"&Otilde;":"&#213;", 
+    u"&Ouml;":"&#214;", 
+    u"&times;":"&#215;", 
+    u"&Oslash;":"&#216;", 
+    u"&Ugrave;":"&#217;", 
+    u"&Uacute;":"&#218;", 
+    u"&Ucirc;":"&#219;", 
+    u"&Uuml;":"&#220;", 
+    u"&Yacute;":"&#221;", 
+    u"&THORN;":"&#222;", 
+    u"&szlig;":"&#223;", 
+    u"&agrave;":"&#224;", 
+    u"&aacute;":"&#225;", 
+    u"&acirc;":"&#226;", 
+    u"&atilde;":"&#227;", 
+    u"&auml;":"&#228;", 
+    u"&aring;":"&#229;", 
+    u"&aelig;":"&#230;", 
+    u"&ccedil;":"&#231;", 
+    u"&egrave;":"&#232;", 
+    u"&eacute;":"&#233;", 
+    u"&ecirc;":"&#234;", 
+    u"&euml;":"&#235;", 
+    u"&igrave;":"&#236;", 
+    u"&iacute;":"&#237;", 
+    u"&icirc;":"&#238;", 
+    u"&iuml;":"&#239;", 
+    u"&eth;":"&#240;", 
+    u"&ntilde;":"&#241;", 
+    u"&ograve;":"&#242;", 
+    u"&oacute;":"&#243;", 
+    u"&ocirc;":"&#244;", 
+    u"&otilde;":"&#245;", 
+    u"&ouml;":"&#246;", 
+    u"&divide;":"&#247;", 
+    u"&oslash;":"&#248;", 
+    u"&ugrave;":"&#249;", 
+    u"&uacute;":"&#250;", 
+    u"&ucirc;":"&#251;", 
+    u"&uuml;":"&#252;", 
+    u"&yacute;":"&#253;", 
+    u"&thorn;":"&#254;", 
+    u"&yuml;":"&#255;", 
+    u"&OElig;":"&#338;", 
+    u"&oelig;":"&#339;", 
+    u"&Scaron;":"&#352;", 
+    u"&scaron;":"&#353;", 
+    u"&Yuml;":"&#376;", 
+    u"&fnof;":"&#402;", 
+    u"&circ;":"&#94;", 
+    u"&tilde;":"&#126;", 
+    u"&Alpha;":"&#913;", 
+    u"&Beta;":"&#914;", 
+    u"&Gamma;":"&#915;", 
+    u"&Delta;":"&#916;", 
+    u"&Epsilon;":"&#917;", 
+    u"&Zeta;":"&#918;", 
+    u"&Eta;":"&#919;", 
+    u"&Theta;":"&#920;", 
+    u"&Iota;":"&#921;", 
+    u"&Kappa;":"&#922;", 
+    u"&Lambda;":"&#923;", 
+    u"&Mu;":"&#924;", 
+    u"&Nu;":"&#925;", 
+    u"&Xi;":"&#926;", 
+    u"&Omicron;":"&#927;", 
+    u"&Pi;":"&#928;", 
+    u"&Rho;":"&#929;", 
+    u"&Sigma;":"&#931;", 
+    u"&Tau;":"&#932;", 
+    u"&Upsilon;":"&#933;", 
+    u"&Phi;":"&#934;", 
+    u"&Chi;":"&#935;", 
+    u"&Psi;":"&#936;", 
+    u"&Omega;":"&#937;", 
+    u"&alpha;":"&#945;", 
+    u"&beta;":"&#946;", 
+    u"&gamma;":"&#947;", 
+    u"&delta;":"&#948;", 
+    u"&epsilon;":"&#949;",
+    u"&zeta;":"&#950;", 
+    u"&eta;":"&#951;", 
+    u"&theta;":"&#952;",
+    u"&iota;":"&#953;", 
+    u"&kappa;":"&#954;", 
+    u"&lambda;":"&#955;", 
+    u"&mu;":"&#956;", 
+    u"&nu;":"&#957;", 
+    u"&xi;":"&#958;", 
+    u"&omicron;":"&#959;", 
+    u"&pi;":"&#960;", 
+    u"&rho;":"&#961;", 
+    u"&sigmaf;":"&#962;", 
+    u"&sigma;":"&#963;", 
+    u"&tau;":"&#964;", 
+    u"&upsilon;":"&#965;", 
+    u"&phi;":"&#966;", 
+    u"&chi;":"&#967;", 
+    u"&psi;":"&#968;", 
+    u"&omega;":"&#969;", 
+    u"&thetasym;":"&#977;", 
+    u"&upsih;":"&#978;", 
+    u"&piv;":"&#982;", 
+    u"&ndash;":"&#8211;", 
+    u"&mdash;":"&#8212;", 
+    u"&lsquo;":"&#8216;", 
+    u"&rsquo;":"&#8217;", 
+    u"&sbquo;":"&#8218;", 
+    u"&ldquo;":"&#8220;", 
+    u"&rdquo;":"&#8221;", 
+    u"&bdquo;":"&#8222;", 
+    u"&dagger;":"&#8224;", 
+    u"&Dagger;":"&#8225;", 
+    u"&bull;":"&#8226;", 
+    u"&hellip;":"&#8230;", 
+    u"&permil;":"&#8240;", 
+    u"&prime;":"&#8242;", 
+    u"&Prime;":"&#8243;", 
+    u"&lsaquo;":"&#8249;", 
+    u"&rsaquo;":"&#8250;", 
+    u"&oline;":"&#8254;", 
+    u"&frasl;":"&#8260;", 
+    u"&euro;":"&#8364;", 
+    u"&image;":"&#8476;", 
+    u"&weierp;":"&#8472;", 
+    u"&real;":"&#8476;", 
+    u"&trade;":"&#8482;", 
+    u"&alefsym;":"&#8501;", 
+    u"&larr;":"&#8592;", 
+    u"&uarr;":"&#8593;", 
+    u"&rarr;":"&#8594;", 
+    u"&darr;":"&#8595;", 
+    u"&harr;":"&#8596;", 
+    u"&crarr;":"&#8629;", 
+    u"&lArr;":"&#8656;", 
+    u"&uArr;":"&#8657;", 
+    u"&rArr;":"&#8658;", 
+    u"&dArr;":"&#8659;", 
+    u"&hArr;":"&#8660;", 
+    u"&forall;":"&#8704;", 
+    u"&part;":"&#8706;", 
+    u"&exist;":"&#8707;", 
+    u"&empty;":"&#8709;", 
+    u"&nabla;":"&#8711;", 
+    u"&isin;":"&#8712;", 
+    u"&notin;":"&#8713;", 
+    u"&ni;":"&#8715;", 
+    u"&prod;":"&#8719;", 
+    u"&sum;":"&#8721;", 
+    u"&minus;":"&#8727;", 
+    u"&lowast;":"&#8727;", 
+    u"&radic;":"&#8730;", 
+    u"&prop;":"&#8733;", 
+    u"&infin;":"&#8734;", 
+    u"&ang;":"&#8736;", 
+    u"&and;":"&#8743;", 
+    u"&or;":"&#8744;", 
+    u"&cap;":"&#8745;", 
+    u"&cup;":"&#8746;", 
+    u"&int;":"&#8747;", 
+    u"&there4;":"&#8756;", 
+    u"&sim;":"&#8764;", 
+    u"&cong;":"&#8773;", 
+    u"&asymp;":"&#8776;", 
+    u"&ne;":"&#8800;", 
+    u"&equiv;":"&#8801;", 
+    u"&le;":"&#8804;", 
+    u"&ge;":"&#8805;", 
+    u"&sub;":"&#8834;", 
+    u"&sup;":"&#8835;", 
+    u"&nsub;":"&#8836;", 
+    u"&sube;":"&#8838;", 
+    u"&supe;":"&#8839;", 
+    u"&oplus;":"&#8853;", 
+    u"&otimes;":"&#8855;", 
+    u"&perp;":"&#8869;", 
+    u"&sdot;":"&#8901;", 
+    u"&lceil;":"&#8968;", 
+    u"&rceil;":"&#8969;", 
+    u"&lfloor;":"&#8970;", 
+    u"&rfloor;":"&#8971;", 
+    u"&lang;":"&#9001;", 
+    u"&rang;":"&#9674;", 
+    u"&loz;": "&#9674;", 
+    u"&spades;":"&#9824;", 
+    u"&clubs;":"&#9827;", 
+    u"&hearts;":"&#9829;",
+    u"&diams;":"&#9830;",
+    }
+html_escape_numbered_to_lettered_table = {
+    u"&#34;":  "&quot;",
+    u"&#039;":  "&#039;",
+    u"&#60;":   "&lt;",
+    u"&#62;":   "&gt;",
+    u"&#161;":  "&iexcl;",
+    u"&#162;":  "&cent;",
+    u"&#163;":  "&pound;",
+    u"&#164;":  "&curren;",
+    u"&#165;":  "&yen;",
+    u"&#166;":  "&brvbar;",
+    u"&#167;":  "&sect;",
+    u"&#168;":  "&uml;",
+    u"&#169;":  "&copy;",
+    u"&#170;":  "&ordf;",
+    u"&#171;":  "&laquo;",
+    u"&#172;":  "&not;",
+    u"&#173;":  "&shy;",
+    u"&#174;":  "&reg;",
+    u"&#175;":  "&macr;",
+    u"&#176;":  "&deg;",
+    u"&#177;":  "&plusmn;",
+    u"&#178;":  "&sup2;",
+    u"&#179;":  "&sup3;",
+    u"&#180;":  "&acute;",
+    u"&#181;":  "&micro;",
+    u"&#182;":  "&para;",
+    u"&#183;":  "&middot;",
+    u"&#184;":  "&cedil;",
+    u"&#185;":  "&sup1;",
+    u"&#186;":  "&ordm;",
+    u"&#187;":  "&raquo;",
+    u"&#188;":  "&frac14;",
+    u"&#189;":  "&frac12;",
+    u"&#190;":  "&frac34;",
+    u"&#191;":  "&iquest;",
+    u"&#192;":  "&Agrave;",
+    u"&#193;":  "&Aacute;",
+    u"&#194;":  "&Acirc;",
+    u"&#195;":  "&Atilde;",
+    u"&#196;":  "&Auml;",
+    u"&#197;":  "&Aring;",
+    u"&#198;":  "&AElig;",
+    u"&#199;":  "&Ccedil;",
+    u"&#200;":  "&Egrave;",
+    u"&#201;":  "&Eacute;",
+    u"&#202;":  "&Ecirc;",
+    u"&#203;":  "&Euml;",
+    u"&#204;":  "&Igrave;",
+    u"&#205;":  "&Iacute;",
+    u"&#206;":  "&Icirc;",
+    u"&#207;":  "&Iuml;",
+    u"&#208;":  "&ETH;",
+    u"&#209;":  "&Ntilde;",
+    u"&#210;":  "&Ograve;",
+    u"&#211;":  "&Oacute;",
+    u"&#212;":  "&Ocirc;",
+    u"&#213;":  "&Otilde;",
+    u"&#214;":  "&Ouml;",
+    u"&#215;":  "&times;",
+    u"&#216;":  "&Oslash;",
+    u"&#217;":  "&Ugrave;",
+    u"&#218;":  "&Uacute;",
+    u"&#219;":  "&Ucirc;",
+    u"&#220;":  "&Uuml;",
+    u"&#221;":  "&Yacute;",
+    u"&#222;":  "&THORN;",
+    u"&#223;":  "&szlig;",
+    u"&#224;":  "&agrave;",
+    u"&#225;":  "&aacute;",
+    u"&#226;":  "&acirc;",
+    u"&#227;":  "&atilde;",
+    u"&#228;":  "&auml;",
+    u"&#229;":  "&aring;",
+    u"&#230;":  "&aelig;",
+    u"&#231;":  "&ccedil;",
+    u"&#232;":  "&egrave;",
+    u"&#233;":  "&eacute;",
+    u"&#234;":  "&ecirc;",
+    u"&#235;":  "&euml;",
+    u"&#236;":  "&igrave;",
+    u"&#237;":  "&iacute;",
+    u"&#238;":  "&icirc;",
+    u"&#239;":  "&iuml;",
+    u"&#240;":  "&eth;",
+    u"&#241;":  "&ntilde;",
+    u"&#242;":  "&ograve;",
+    u"&#243;":  "&oacute;",
+    u"&#244;":  "&ocirc;",
+    u"&#245;":  "&otilde;",
+    u"&#246;":  "&ouml;",
+    u"&#247;":  "&divide;",
+    u"&#248;":  "&oslash;",
+    u"&#249;":  "&ugrave;",
+    u"&#250;":  "&uacute;",
+    u"&#251;":  "&ucirc;",
+    u"&#252;":  "&uuml;",
+    u"&#253;":  "&yacute;",
+    u"&#254;":  "&thorn;",
+    u"&#255;":  "&yuml;",
+    u"&#338;":  "&OElig;",
+    u"&#339;":  "&oelig;",
+    u"&#352;":  "&Scaron;",
+    u"&#353;":  "&scaron;",
+    u"&#376;":  "&Yuml;",
+    u"&#402;":  "&fnof;",
+    u"&#94;":   "&circ;",
+    u"&#126;":  "&tilde;",
+    u"&#913;":  "&Alpha;",
+    u"&#914;":  "&Beta;",
+    u"&#915;":  "&Gamma;",
+    u"&#916;":  "&Delta;",
+    u"&#917;":  "&Epsilon;",
+    u"&#918;":  "&Zeta;",
+    u"&#919;":  "&Eta;",
+    u"&#920;":  "&Theta;",
+    u"&#921;":  "&Iota;",
+    u"&#922;":  "&Kappa;",
+    u"&#923;":  "&Lambda;",
+    u"&#924;":  "&Mu;",
+    u"&#925;":  "&Nu;",
+    u"&#926;":  "&Xi;",
+    u"&#927;":  "&Omicron;",
+    u"&#928;":  "&Pi;",
+    u"&#929;":  "&Rho;",
+    u"&#931;":  "&Sigma;",
+    u"&#932;":  "&Tau;",
+    u"&#933;":  "&Upsilon;",
+    u"&#934;":  "&Phi;",
+    u"&#935;":  "&Chi;",
+    u"&#936;":  "&Psi;",
+    u"&#937;":  "&Omega;",
+    u"&#945;":  "&alpha;",
+    u"&#946;":  "&beta;",
+    u"&#947;":  "&gamma;",
+    u"&#948;":  "&delta;",
+    u"&#949;":  "&epsilon;",
+    u"&#950;":  "&zeta;",
+    u"&#951;":  "&eta;",
+    u"&#952;":  "&theta;",
+    u"&#953;":  "&iota;",
+    u"&#954;":  "&kappa;",
+    u"&#955;":  "&lambda;",
+    u"&#956;":  "&mu;",
+    u"&#957;":  "&nu;",
+    u"&#958;":  "&xi;",
+    u"&#959;":  "&omicron;",
+    u"&#960;":  "&pi;",
+    u"&#961;":  "&rho;",
+    u"&#962;":  "&sigmaf;",
+    u"&#963;":  "&sigma;",
+    u"&#964;":  "&tau;",
+    u"&#965;":  "&upsilon;",
+    u"&#966;":  "&phi;",
+    u"&#967;":  "&chi;",
+    u"&#968;":  "&psi;",
+    u"&#969;":  "&omega;",
+    u"&#977;":  "&thetasym;",
+    u"&#978;":  "&upsih;",
+    u"&#982;":  "&piv;",
+    u"&#8211;": "&ndash;",
+    u"&#8212;": "&mdash;",
+    u"&#8216;": "&lsquo;",
+    u"&#8217;": "&rsquo;",
+    u"&#8218;": "&sbquo;",
+    u"&#8220;": "&ldquo;",
+    u"&#8221;": "&rdquo;",
+    u"&#8222;": "&bdquo;",
+    u"&#8224;": "&dagger;",
+    u"&#8225;": "&Dagger;",
+    u"&#8226;": "&bull;",
+    u"&#8230;": "&hellip;",
+    u"&#8240;": "&permil;",
+    u"&#8242;": "&prime;",
+    u"&#8243;": "&Prime;",
+    u"&#8249;": "&lsaquo;",
+    u"&#8250;": "&rsaquo;",
+    u"&#8254;": "&oline;",
+    u"&#8260;": "&frasl;",
+    u"&#8364;": "&euro;",
+    u"&#8476;": "&image;",
+    u"&#8472;": "&weierp;",
+    u"&#8476;": "&real;",
+    u"&#8482;": "&trade;",
+    u"&#8501;": "&alefsym;",
+    u"&#8592;": "&larr;",
+    u"&#8593;": "&uarr;",
+    u"&#8594;": "&rarr;",
+    u"&#8595;": "&darr;",
+    u"&#8596;": "&harr;",
+    u"&#8629;": "&crarr;",
+    u"&#8656;": "&lArr;",
+    u"&#8657;": "&uArr;",
+    u"&#8658;": "&rArr;",
+    u"&#8659;": "&dArr;",
+    u"&#8660;": "&hArr;",
+    u"&#8704;": "&forall;",
+    u"&#8706;": "&part;",
+    u"&#8707;": "&exist;",
+    u"&#8709;": "&empty;",
+    u"&#8711;": "&nabla;",
+    u"&#8712;": "&isin;",
+    u"&#8713;": "&notin;",
+    u"&#8715;": "&ni;",
+    u"&#8719;": "&prod;",
+    u"&#8721;": "&sum;",
+    u"&#8727;": "&minus;",
+    u"&#8727;": "&lowast;",
+    u"&#8730;": "&radic;",
+    u"&#8733;": "&prop;",
+    u"&#8734;": "&infin;",
+    u"&#8736;": "&ang;",
+    u"&#8743;": "&and;",
+    u"&#8744;": "&or;",
+    u"&#8745;": "&cap;",
+    u"&#8746;": "&cup;",
+    u"&#8747;": "&int;",
+    u"&#8756;": "&there4;",
+    u"&#8764;": "&sim;",
+    u"&#8773;": "&cong;",
+    u"&#8776;": "&asymp;",
+    u"&#8800;": "&ne;",
+    u"&#8801;": "&equiv;",
+    u"&#8804;": "&le;",
+    u"&#8805;": "&ge;",
+    u"&#8834;": "&sub;",
+    u"&#8835;": "&sup;",
+    u"&#8836;": "&nsub;",
+    u"&#8838;": "&sube;",
+    u"&#8839;": "&supe;",
+    u"&#8853;": "&oplus;",
+    u"&#8855;": "&otimes;",
+    u"&#8869;": "&perp;",
+    u"&#8901;": "&sdot;",
+    u"&#8968;": "&lceil;",
+    u"&#8969;": "&rceil;",
+    u"&#8970;": "&lfloor;",
+    u"&#8971;": "&rfloor;",
+    u"&#9001;": "&lang;",
+    u"&#9674;": "&rang;",
+    u"&#9674;": "&loz;",
+    u"&#9824;": "&spades;",
+    u"&#9827;": "&clubs;",
+    u"&#9829;": "&hearts;",
+    u"&#9830;": "&diams;",
+    }   
 xml_escape_table = {
     u"\"": "&quot;", u"'": "&#039;", u"<": "&lt;", u">": "&gt;"
 }
-html_reserved_list = (u"\"", u"'", u"<", u">", u"&")
 
 
-class HtmlEntitizeCommand(StringEncode):
+class HtmlEntitizeLetteredCommand(StringEncode):
     def encode(self, text):
         text = text.replace('&', '&amp;')
         for k in html_escape_table:
             v = html_escape_table[k]
             text = text.replace(k, v)
-        ret = ''
-        for i, c in enumerate(text):
-            if ord(c) > 127:
-                ret += hex(ord(c)).replace('0x', '&#x') + ';'
-            else:
-                ret += c
-        return ret
+        return text
+        
+class HtmlEntitizeNumberedCommand(StringEncode):
+    def encode(self, text):
+        text = text.replace('&', '&amp;')
+        for k in html_escape_numberd_table:
+            v = html_escape_numberd_table[k]
+            text = text.replace(k, v)
+        return text
+
+class HtmlEntitizeLetterToNumberedCommand(StringEncode):
+    def encode(self, text):
+        text = text.replace('&', '&amp;')
+        for k in html_escape_lettered_to_numberd_table:
+            v = html_escape_lettered_to_numberd_table[k]
+            text = text.replace(k, v)
+        return text
+
+class HtmlEntitizeNumberedToLetterCommand(StringEncode):
+    def encode(self, text):
+        text = text.replace('&', '&amp;')
+        for k in html_escape_numbered_to_lettered_table:
+            v = html_escape_numbered_to_lettered_table[k]
+            text = text.replace(k, v)
+        return text
 
 
 class HtmlDeentitizeCommand(StringEncode):
@@ -47,61 +1051,20 @@ class HtmlDeentitizeCommand(StringEncode):
         for k in html_escape_table:
             v = html_escape_table[k]
             text = text.replace(v, k)
-        while re.search('&#[xX][a-fA-F0-9]+;', text):
-            match = re.search('&#[xX]([a-fA-F0-9]+);', text)
-            text = text.replace(match.group(0), unichr(int('0x' + match.group(1), 16)))
         text = text.replace('&amp;', '&')
         return text
 
 
-class SafeHtmlEntitizeCommand(StringEncode):
-    def encode(self, text):
-        for k in html_escape_table:
-            # skip HTML reserved characters
-            if k in html_reserved_list:
-                continue
-            v = html_escape_table[k]
-            text = text.replace(k, v)
-        ret = ''
-        for i, c in enumerate(text):
-            if ord(c) > 127:
-                ret += hex(ord(c)).replace('0x', '&#x') + ';'
-            else:
-                ret += c
-        return ret
-
-
-class SafeHtmlDeentitizeCommand(StringEncode):
-    def encode(self, text):
-        for k in html_escape_table:
-            # skip HTML reserved characters
-            if k in html_reserved_list:
-                continue
-            v = html_escape_table[k]
-            text = text.replace(v, k)
-        while re.search('&#[xX][a-fA-F0-9]+;', text):
-            match = re.search('&#[xX]([a-fA-F0-9]+);', text)
-            text = text.replace(match.group(0), unichr(int('0x' + match.group(1), 16)))
-        text = text.replace('&amp;', '&')
-        return text
-
-
-class XmlEntitizeCommand(StringEncode):
+class xmlEntitizeCommand(StringEncode):
     def encode(self, text):
         text = text.replace('&', '&amp;')
         for k in xml_escape_table:
             v = xml_escape_table[k]
             text = text.replace(k, v)
-        ret = ''
-        for i, c in enumerate(text):
-            if ord(c) > 127:
-                ret += hex(ord(c)).replace('0x', '&#x') + ';'
-            else:
-                ret += c
-        return ret
+        return text
 
 
-class XmlDeentitizeCommand(StringEncode):
+class xmlDeentitizeCommand(StringEncode):
     def encode(self, text):
         for k in xml_escape_table:
             v = xml_escape_table[k]
@@ -110,34 +1073,14 @@ class XmlDeentitizeCommand(StringEncode):
         return text
 
 
-class JsonEscapeCommand(StringEncode):
-    def encode(self, text):
-        return json.dumps(text)
-
-
-class JsonUnescapeCommand(StringEncode):
-    def encode(self, text):
-        return json.loads(text)
-
-
 class UrlEncodeCommand(StringEncode):
     def encode(self, text):
-        return urllib.parse.quote(text).replace('/', '%2F')
+        return urllib.quote(text)
 
 
 class UrlDecodeCommand(StringEncode):
     def encode(self, text):
-        return urllib.parse.unquote(text)
-
-
-class Base64EncodeCommand(StringEncode):
-    def encode(self, text):
-        return base64.b64encode(text.encode('raw_unicode_escape')).decode('ascii')
-
-
-class Base64DecodeCommand(StringEncode):
-    def encode(self, text):
-        return base64.b64decode(text).decode('raw_unicode_escape')
+        return urllib.unquote(text)
 
 
 class Escaper(StringEncode):
@@ -151,140 +1094,3 @@ class EscapeRegexCommand(Escaper):
 
 class EscapeLikeCommand(Escaper):
     meta = r'[%_]'
-
-
-class HexDecCommand(StringEncode):
-    def encode(self, text):
-        return str(int(text, 16))
-
-
-class DecHexCommand(StringEncode):
-    def encode(self, text):
-        return hex(int(text))
-
-
-class UnicodeHexCommand(StringEncode):
-    def encode(self, text):
-        hex_text = u''
-        text_bytes = bytes(text, 'utf-16')
-
-        if text_bytes[0:2] == b'\xff\xfe':
-            endian = 'little'
-            text_bytes = text_bytes[2:]
-        elif text_bytes[0:2] == b'\xfe\xff':
-            endian = 'big'
-            text_bytes = text_bytes[2:]
-
-        char_index = 0
-        for c in text_bytes:
-            if char_index == 0:
-                c1 = c
-                char_index += 1
-            elif char_index == 1:
-                c2 = c
-                if endian == 'little':
-                    c1, c2 = c2, c1
-                tmp = (c1 << 8) + c2
-                if tmp < 0x80:
-                    hex_text += chr(tmp)
-                    char_index = 0
-                elif tmp >= 0xd800 and tmp <= 0xdbff:
-                    char_index += 1
-                else:
-                    hex_text += '\\u' + '{0:04x}'.format(tmp)
-                    char_index = 0
-            elif char_index == 2:
-                c3 = c
-                char_index += 1
-            elif char_index == 3:
-                c4 = c
-                if endian == 'little':
-                    c3, c4 = c4, c3
-                tmp1 = ((c1 << 8) + c2) - 0xd800
-                tmp2 = ((c3 << 8) + c4) - 0xdc00
-                tmp = (tmp1 * 0x400) + tmp2 + 0x10000
-                hex_text += '\\U' + '{0:08x}'.format(tmp)
-                char_index = 0
-        return hex_text
-
-
-class HexUnicodeCommand(StringEncode):
-    def encode(self, text):
-        uni_text = text
-
-        endian = sys.byteorder
-
-        r = re.compile(r'\\u([0-9a-fA-F]{2})([0-9a-fA-F]{2})')
-        rr = r.search(uni_text)
-        while rr:
-            first_byte = int(rr.group(1), 16)
-
-            if first_byte >= 0xd8 and first_byte <= 0xdf:
-                # Surrogate pair
-                pass
-            else:
-                if endian == 'little':
-                    b1 = int(rr.group(2), 16)
-                    b2 = int(rr.group(1), 16)
-                else:
-                    b1 = int(rr.group(1), 16)
-                    b2 = int(rr.group(2), 16)
-
-                ch = bytes([b1, b2]).decode('utf-16')
-
-                uni_text = uni_text.replace(rr.group(0), ch)
-            rr = r.search(uni_text, rr.start(0)+1)
-
-        # Surrogate pair (2 bytes + 2 bytes)
-        r = re.compile(r'\\u([0-9a-fA-F]{2})([0-9a-fA-F]{2})\\u([0-9a-fA-F]{2})([0-9a-fA-F]{2})')
-        rr = r.search(uni_text)
-        while rr:
-            if endian == 'little':
-                b1 = int(rr.group(2), 16)
-                b2 = int(rr.group(1), 16)
-                b3 = int(rr.group(4), 16)
-                b4 = int(rr.group(3), 16)
-            else:
-                b1 = int(rr.group(1), 16)
-                b2 = int(rr.group(2), 16)
-                b3 = int(rr.group(3), 16)
-                b4 = int(rr.group(4), 16)
-
-            ch = bytes([b1, b2, b3, b4]).decode('utf-16')
-
-            uni_text = uni_text.replace(rr.group(0), ch)
-            rr = r.search(uni_text)
-
-        # Surrogate pair (4 bytes)
-        r = re.compile(r'\\U([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})')
-        rr = r.search(uni_text)
-        while rr:
-            tmp = (int(rr.group(1), 16) << 24) \
-                + (int(rr.group(2), 16) << 16) \
-                + (int(rr.group(3), 16) <<  8) \
-                + (int(rr.group(4), 16))
-
-            if (tmp <= 0xffff):
-                ch = chr(tmp)
-            else:
-                tmp -= 0x10000
-                c1 = 0xd800 + int(tmp / 0x400)
-                c2 = 0xdc00 + int(tmp % 0x400)
-                if endian == 'little':
-                    b1 = c1 & 0xff
-                    b2 = c1 >> 8
-                    b3 = c2 & 0xff
-                    b4 = c2 >> 8
-                else:
-                    b1 = c1 >> 8
-                    b2 = c1 & 0xff
-                    b3 = c2 >> 8
-                    b4 = c2 & 0xff
-
-                ch = bytes([b1, b2, b3, b4]).decode('utf-16')
-
-            uni_text = uni_text.replace(rr.group(0), ch)
-            rr = r.search(uni_text)
-
-        return uni_text
-
